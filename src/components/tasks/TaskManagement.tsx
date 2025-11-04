@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppStore } from "@/store/appStore";
 import type { Task, TaskCategory } from "@shared/types";
-import { Plus, Trash2, Briefcase, Coffee, Brush, Tally5 } from "lucide-react";
+import { Plus, Trash2, Briefcase, Coffee, Brush, Tally5, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useShallow } from 'zustand/react/shallow';
 const categoryConfig = {
   work: { icon: Briefcase, color: "text-brand-blue" },
   leisure: { icon: Coffee, color: "text-brand-yellow" },
@@ -20,10 +21,10 @@ function TaskItem({ task }: { task: Task }) {
       <div className="flex items-center gap-3">
         <Icon className={`h-5 w-5 ${categoryConfig[task.category].color}`} />
         <span className="font-medium">{task.title}</span>
-        {task.completedPomodoros > 0 && (
-          <Badge variant="secondary" className="flex items-center gap-1">
-            <Tally5 className="h-3 w-3" />
-            {task.completedPomodoros}
+        {task.duration && (
+          <Badge variant="outline" className="flex items-center gap-1 font-normal">
+            <Clock className="h-3 w-3" />
+            {task.duration} min
           </Badge>
         )}
       </div>
@@ -39,19 +40,31 @@ function TaskItem({ task }: { task: Task }) {
   );
 }
 export function TaskManagement() {
-  const tasks = useAppStore((s) => s.user?.tasks) ?? [];
+  const { tasks, taskQueue } = useAppStore(
+    useShallow((s) => ({
+      tasks: s.user?.tasks ?? [],
+      taskQueue: s.taskQueue,
+    }))
+  );
   const addTask = useAppStore((s) => s.addTask);
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDuration, setNewTaskDuration] = useState("25");
   const [activeTab, setActiveTab] = useState<TaskCategory>("work");
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (newTaskTitle.trim()) {
-      addTask({ title: newTaskTitle.trim(), category: activeTab });
+      addTask({
+        title: newTaskTitle.trim(),
+        category: activeTab,
+        duration: parseInt(newTaskDuration, 10) || 25,
+      });
       setNewTaskTitle("");
+      setNewTaskDuration("25");
     }
   };
+  const queuedTaskIds = new Set(taskQueue.map(t => t.id));
   const filteredTasks = (category: TaskCategory) =>
-    tasks.filter((t) => t.category === category);
+    tasks.filter((t) => t.category === category && !queuedTaskIds.has(t.id));
   return (
     <Card className="rounded-2xl shadow-soft">
       <CardHeader>
@@ -64,12 +77,23 @@ export function TaskManagement() {
             <TabsTrigger value="leisure">Leisure</TabsTrigger>
             <TabsTrigger value="creative">Creative</TabsTrigger>
           </TabsList>
-          <form onSubmit={handleAddTask} className="flex gap-2 my-4">
+          <form onSubmit={handleAddTask} className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 my-4">
             <Input
               placeholder={`Add a new ${activeTab} task...`}
               value={newTaskTitle}
               onChange={(e) => setNewTaskTitle(e.target.value)}
             />
+            <div className="relative">
+              <Clock className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="number"
+                placeholder="Mins"
+                className="pl-8 w-24"
+                value={newTaskDuration}
+                onChange={(e) => setNewTaskDuration(e.target.value)}
+                min="1"
+              />
+            </div>
             <Button type="submit" size="icon">
               <Plus className="h-4 w-4" />
             </Button>
@@ -83,7 +107,7 @@ export function TaskManagement() {
                   ))
                 ) : (
                   <p className="text-sm text-muted-foreground text-center py-8">
-                    No {cat} tasks yet. Add one above!
+                    No available {cat} tasks. Add one or complete some from your queue!
                   </p>
                 )}
               </TabsContent>

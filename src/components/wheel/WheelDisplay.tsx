@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -32,17 +32,19 @@ const truncateText = (text: string, maxLength: number) => {
   return text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
 };
 export function WheelDisplay() {
-  const { tasks, taskQueue, wheelMode, advancedCategories, advancedModeWeights } = useAppStore(
+  const { tasks, taskQueue, wheelMode, advancedCategories, advancedModeWeights, spinningTargetTask } = useAppStore(
     useShallow((s) => ({
       tasks: s.user?.tasks ?? [],
       taskQueue: s.taskQueue,
       wheelMode: s.wheelMode,
       advancedCategories: s.advancedModeCategories,
       advancedModeWeights: s.advancedModeWeights,
+      spinningTargetTask: s.spinningTargetTask,
     }))
   );
   const setWheelMode = useAppStore((s) => s.setWheelMode);
   const spinWheelAction = useAppStore((s) => s.spinWheel);
+  const confirmSpinResult = useAppStore((s) => s.confirmSpinResult);
   const toggleAdvancedCategory = useAppStore((s) => s.toggleAdvancedCategory);
   const setAdvancedWeight = useAppStore((s) => s.setAdvancedWeight);
   const [rotation, setRotation] = useState(0);
@@ -55,7 +57,7 @@ export function WheelDisplay() {
     if (otherCategories.length > 0) {
       const otherTotal = currentTotal - advancedModeWeights[category];
       otherCategories.forEach(cat => {
-        const proportion = advancedModeWeights[cat] / otherTotal;
+        const proportion = otherTotal > 0 ? advancedModeWeights[cat] / otherTotal : 1 / otherCategories.length;
         const adjustedWeight = Math.round(remainingWeight * proportion);
         setAdvancedWeight(cat, adjustedWeight);
       });
@@ -71,7 +73,8 @@ export function WheelDisplay() {
   };
   const filteredTasks = useMemo(() => {
     const queuedTaskIds = new Set(taskQueue.map(t => t.id));
-    const availableTasks = tasks.filter(t => !queuedTaskIds.has(t.id));
+    // During spin, keep the target task in the wheel for visual feedback
+    const availableTasks = tasks.filter(t => !queuedTaskIds.has(t.id) || t.id === spinningTargetTask?.id);
     switch (wheelMode) {
       case 'hard-working': return availableTasks.filter(t => t.category === 'work');
       case 'time-to-work': return availableTasks.filter(t => t.category === 'work' || t.category === 'creative');
@@ -80,7 +83,7 @@ export function WheelDisplay() {
         return availableTasks.filter(t => enabled.includes(t.category));
       case 'normal': default: return availableTasks;
     }
-  }, [tasks, wheelMode, advancedCategories, taskQueue]);
+  }, [tasks, wheelMode, advancedCategories, taskQueue, spinningTargetTask]);
   const segments = useMemo(() => {
     if (filteredTasks.length === 0) return [];
     let cumulativeAngle = -Math.PI / 2;
@@ -151,6 +154,10 @@ export function WheelDisplay() {
     setIsSpinning(true);
     setRotation(newRotation);
   };
+  const onSpinComplete = () => {
+    setIsSpinning(false);
+    confirmSpinResult();
+  };
   return (
     <Card className="rounded-2xl shadow-soft overflow-hidden">
       <CardContent className="p-6 md:p-8 flex flex-col items-center justify-center space-y-6">
@@ -195,7 +202,7 @@ export function WheelDisplay() {
           </Popover>
         </div>
         <div className="relative w-full max-w-sm aspect-square">
-          <motion.div className="w-full h-full" animate={{ rotate: rotation }} transition={{ type: "spring", stiffness: 20, damping: 15, mass: 2 }} onAnimationComplete={() => setIsSpinning(false)}>
+          <motion.div className="w-full h-full" animate={{ rotate: rotation }} transition={{ type: "spring", stiffness: 20, damping: 15, mass: 2 }} onAnimationComplete={onSpinComplete}>
             <svg viewBox="0 0 100 100" className="w-full h-full">
               <defs>
                 {segments.map((segment, i) => (

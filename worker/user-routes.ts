@@ -48,6 +48,11 @@ function getUserId(c: any): string | null {
   const userId = c.req.header('X-User-Id');
   return userId || null;
 }
+// Helper to strip password hash for client responses
+function toClientUser(user: UserWithPassword): User {
+    const { passwordHash, ...clientUser } = user;
+    return clientUser;
+}
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // --- Authentication Routes ---
   app.post('/api/auth/register', async (c) => {
@@ -62,11 +67,11 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       id: userId,
       username,
       tasks: [],
+      completedTasks: [],
       passwordHash,
     };
     await WowUserEntity.create(c.env, newUser);
-    const userForClient: User = { id: newUser.id, username: newUser.username, tasks: newUser.tasks };
-    return ok(c, userForClient);
+    return ok(c, toClientUser(newUser));
   });
   app.post('/api/auth/login', async (c) => {
     const { username, password } = await c.req.json<LoginPayload>();
@@ -77,8 +82,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const storedUser = await userEntity.getState();
     const isPasswordValid = await verifyPassword(password, storedUser.passwordHash);
     if (!isPasswordValid) return notFound(c, 'Invalid username or password');
-    const userForClient: User = { id: storedUser.id, username: storedUser.username, tasks: storedUser.tasks };
-    return ok(c, userForClient);
+    return ok(c, toClientUser(storedUser));
   });
   // --- Task Management Routes (now require user context) ---
   app.get('/api/tasks', async (c) => {
@@ -91,13 +95,13 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
   app.post('/api/tasks', async (c) => {
     const userId = getUserId(c);
     if (!userId) return bad(c, 'Authentication required');
-    const { title, category } = (await c.req.json()) as { title?: string; category?: TaskCategory };
+    const { title, category, duration } = (await c.req.json()) as { title?: string; category?: TaskCategory, duration?: number };
     if (!isStr(title) || !['work', 'leisure', 'creative'].includes(category as string)) {
       return bad(c, 'Valid title and category are required');
     }
     const user = new WowUserEntity(c.env, userId);
     if (!await user.exists()) return notFound(c, 'User not found');
-    const newTask = await user.addTask({ title, category: category! });
+    const newTask = await user.addTask({ title, category: category!, duration });
     return ok(c, newTask);
   });
   app.delete('/api/tasks/:taskId', async (c) => {
@@ -110,5 +114,16 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const deleted = await user.deleteTask(taskId);
     if (!deleted) return notFound(c, 'Task not found');
     return ok(c, { id: taskId, deleted });
+  });
+  app.post('/api/tasks/:taskId/complete', async (c) => {
+    const userId = getUserId(c);
+    if (!userId) return bad(c, 'Authentication required');
+    const { taskId } = c.req.param();
+    if (!isStr(taskId)) return bad(c, 'Task ID is required');
+    const user = new WowUserEntity(c.env, userId);
+    if (!await user.exists()) return notFound(c, 'User not found');
+    const updatedUser = await user.completeTask(taskId);
+    if (!updatedUser) return notFound(c, 'Task not found');
+    return ok(c, toClientUser(updatedUser));
   });
 }

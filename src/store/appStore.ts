@@ -17,6 +17,7 @@ type AppState = {
   pomodoroState: PomodoroState;
   timer: number;
   currentTaskInSession: Task | null;
+  spinningTargetTask: Task | null;
   advancedModeCategories: Record<TaskCategory, boolean>;
   advancedModeWeights: Record<TaskCategory, number>;
 };
@@ -24,7 +25,7 @@ type AppActions = {
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
-  addTask: (taskData: { title: string; category: TaskCategory }) => Promise<void>;
+  addTask: (taskData: { title: string; category: TaskCategory; duration: number }) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
   openAuthDialog: () => void;
   closeAuthDialog: () => void;
@@ -32,11 +33,12 @@ type AppActions = {
   toggleAdvancedCategory: (category: TaskCategory) => void;
   setAdvancedWeight: (category: TaskCategory, weight: number) => void;
   spinWheel: () => Task | null;
+  confirmSpinResult: () => void;
   startPomodoro: () => void;
   pausePomodoro: () => void;
   resetPomodoro: () => void;
   skipTask: () => void;
-  completeTask: () => void;
+  completePomodoro: () => void;
   pullLeisureTask: () => void;
   clearTaskQueue: () => void;
   _tick: () => void;
@@ -53,6 +55,7 @@ export const useAppStore = create<AppState & AppActions>()(
       pomodoroState: 'idle',
       timer: POMODORO_DURATION,
       currentTaskInSession: null,
+      spinningTargetTask: null,
       advancedModeCategories: {
         work: true,
         leisure: true,
@@ -156,8 +159,8 @@ export const useAppStore = create<AppState & AppActions>()(
         });
       },
       spinWheel: () => {
-        const { user, wheelMode, taskQueue, advancedModeCategories } = get();
-        if (!user) return null;
+        const { user, wheelMode, taskQueue, advancedModeCategories, spinningTargetTask } = get();
+        if (!user || spinningTargetTask) return null;
         const queuedTaskIds = new Set(taskQueue.map(t => t.id));
         let availableTasks: Task[] = [];
         switch (wheelMode) {
@@ -188,14 +191,20 @@ export const useAppStore = create<AppState & AppActions>()(
         }
         const randomIndex = Math.floor(Math.random() * availableTasks.length);
         const selectedTask = availableTasks[randomIndex];
+        set({ spinningTargetTask: selectedTask });
+        return selectedTask;
+      },
+      confirmSpinResult: () => {
+        const { spinningTargetTask } = get();
+        if (!spinningTargetTask) return;
         set(state => {
-          state.taskQueue.push(selectedTask);
+          state.taskQueue.push(spinningTargetTask);
+          state.spinningTargetTask = null;
         });
-        toast.success(`Task selected: ${selectedTask.title}`);
+        toast.success(`Task selected: ${spinningTargetTask.title}`);
         if (get().pomodoroState === 'idle' && get().taskQueue.length === 1) {
           setTimeout(() => get().startPomodoro(), 500);
         }
-        return selectedTask;
       },
       startPomodoro: () => {
         const { pomodoroState, taskQueue } = get();
@@ -205,9 +214,12 @@ export const useAppStore = create<AppState & AppActions>()(
           return;
         }
         if (timerInterval) clearInterval(timerInterval);
+        const currentTask = taskQueue[0];
+        const duration = currentTask?.duration ? currentTask.duration * 60 : POMODORO_DURATION;
         if (pomodoroState === 'idle') {
           set(state => {
-              state.currentTaskInSession = state.taskQueue[0];
+              state.currentTaskInSession = currentTask;
+              state.timer = duration;
           });
         }
         set({ pomodoroState: 'running' });
@@ -221,10 +233,11 @@ export const useAppStore = create<AppState & AppActions>()(
       resetPomodoro: () => {
         if (timerInterval) clearInterval(timerInterval);
         timerInterval = null;
+        const currentTask = get().currentTaskInSession;
+        const duration = currentTask?.duration ? currentTask.duration * 60 : POMODORO_DURATION;
         set({
-          pomodoroState: 'idle',
-          timer: POMODORO_DURATION,
-          currentTaskInSession: null,
+          pomodoroState: 'paused',
+          timer: duration,
         });
       },
       skipTask: () => {
@@ -241,32 +254,41 @@ export const useAppStore = create<AppState & AppActions>()(
           get().startPomodoro();
         }
       },
-      completeTask: () => {
+      completePomodoro: async () => {
         if (timerInterval) clearInterval(timerInterval);
         timerInterval = null;
         const { currentTaskInSession } = get();
         if (!currentTaskInSession) return;
-        triggerConfetti();
-        toast.success(`Completed: ${currentTaskInSession.title}! Time for a break.`);
-        set(state => {
-          const taskInUserList = state.user?.tasks.find(t => t.id === currentTaskInSession.id);
-          if (taskInUserList) {
-            taskInUserList.completedPomodoros += 1;
-          }
-          state.taskQueue.shift();
-          state.pomodoroState = 'break';
-          state.timer = SHORT_BREAK_DURATION;
-          state.currentTaskInSession = null;
-        });
-        setTimeout(() => {
-          set(state => {
-            state.pomodoroState = 'idle';
-            state.timer = POMODORO_DURATION;
+        try {
+          const updatedUser = await api<User>(`/api/tasks/${currentTaskInSession.id}/complete`, {
+            method: 'POST',
           });
-          if (get().taskQueue.length > 0) {
-            get().startPomodoro();
-          }
-        }, SHORT_BREAK_DURATION * 1000);
+          set({ user: updatedUser });
+          triggerConfetti();
+          toast.success(`Completed: ${currentTaskInSession.title}! Time for a break.`);
+          set(state => {
+            state.taskQueue.shift();
+            state.pomodoroState = 'break';
+            state.timer = SHORT_BREAK_DURATION;
+            state.currentTaskInSession = null;
+          });
+          setTimeout(() => {
+            set(state => {
+              state.pomodoroState = 'idle';
+              state.timer = POMODORO_DURATION;
+            });
+            if (get().taskQueue.length > 0) {
+              get().startPomodoro();
+            }
+          }, SHORT_BREAK_DURATION * 1000);
+        } catch (error) {
+          console.error("Failed to complete task:", error);
+          toast.error("Failed to sync task completion. Please try again.");
+          // Reset to paused state to allow user to retry
+          set(state => {
+            state.pomodoroState = 'paused';
+          });
+        }
       },
       pullLeisureTask: () => {
         const { user, taskQueue } = get();
@@ -309,7 +331,7 @@ export const useAppStore = create<AppState & AppActions>()(
           if (state.timer > 0) {
             state.timer -= 1;
           } else {
-            get().completeTask();
+            get().completePomodoro();
           }
         });
       },
