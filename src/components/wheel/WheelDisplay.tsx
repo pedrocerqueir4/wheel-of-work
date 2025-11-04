@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Zap, BrainCircuit, Coffee, Palette, Settings, Check } from "lucide-react";
+import { Zap, BrainCircuit, Coffee, Palette, Settings } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAppStore } from "@/store/appStore";
 import type { Task, TaskCategory, WheelMode } from "@shared/types";
@@ -120,7 +120,7 @@ export function WheelDisplay() {
             </svg>
           </div>
         </div>
-        <Button size="lg" className="px-10 py-6 text-lg font-bold rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-200 active:scale-95 bg-brand-pink hover:bg-brand-pink/90 text-white" onClick={handleSpin} disabled={isSpinning || filteredTasks.length === 0}>
+        <Button size="lg" className="px-10 py-6 text-lg font-bold rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-200 active-scale-95 bg-brand-pink hover:bg-brand-pink/90 text-white" onClick={handleSpin} disabled={isSpinning || filteredTasks.length === 0}>
           <Zap className="mr-2 h-5 w-5" />
           {isSpinning ? "Spinning..." : "Spin the Wheel!"}
         </Button>

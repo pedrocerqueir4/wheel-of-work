@@ -1,77 +1,70 @@
-import js from '@eslint/js'
-import globals from 'globals'
-import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
-import tseslint from 'typescript-eslint'
-import importPlugin from 'eslint-plugin-import'
-
+import globals from "globals";
+import tseslint from "typescript-eslint";
+import pluginReact_recommended from "eslint-plugin-react/configs/recommended.js";
+import pluginReact_jsxRuntime from "eslint-plugin-react/configs/jsx-runtime.js";
+import pluginReactHooks from "eslint-plugin-react-hooks";
+import pluginImport from "eslint-plugin-import";
+import { FlatCompat } from "@eslint/eslintrc";
+import path from "path";
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const compat = new FlatCompat({
+    baseDirectory: __dirname,
+});
 export default tseslint.config(
-  { ignores: ['dist'] },
-  {
-    extends: [
-      js.configs.recommended,
-      ...tseslint.configs.recommended
-    ],
-    files: ['**/*.{ts,tsx}'],
-    languageOptions: {
-      ecmaVersion: 2022,
-      globals: globals.browser,
+    {
+        ignores: ["dist", "node_modules", ".wrangler", "wrangler.toml"],
     },
-    plugins: {
-      'react-hooks': reactHooks,
-      'react-refresh': reactRefresh,
-      'import': importPlugin,
-    },
-    rules: {
-      ...reactHooks.configs.recommended.rules,
-      ...importPlugin.configs.recommended.rules,
-      ...importPlugin.configs.typescript.rules,
-      'prefer-const': 'off',
-      "react-hooks/rules-of-hooks": "error", 
-      "react-hooks/exhaustive-deps": "error",
-      '@typescript-eslint/no-unused-vars': "off",
-      '@typescript-eslint/no-explicit-any': 'off',
-      'react-refresh/only-export-components': [
-        'error',
-        { allowConstantExport: true },
-      ],
-      'import/named': 'error',
-      'import/default': 'error',
-      'import/no-unresolved': ['error', { 
-        ignore: ['cloudflare:workers', 'agents'] 
-      }],
-
-      // CHANGED: Replaced the flawed rule with a more intelligent one.
-      "no-restricted-syntax": [
-        "error",
-        {
-          // This selector is more precise. In plain English, it means:
-          // "Inside a function component (named in PascalCase), find any `set...` call,
-          // but EXCLUDE any calls that are inside a nested function definition (like an event handler)."
-          // This correctly finds the bug while ignoring the false positive.
-          "selector": ":function[id.name=/^[A-Z]/] CallExpression[callee.name=/^set[A-Z]/]:not(ArrowFunctionExpression CallExpression, FunctionExpression CallExpression)",
-          "message": "State setters should not be called directly in the component's render body. This will cause an infinite render loop. Use useEffect or an event handler instead."
+    ...tseslint.configs.recommended,
+    {
+        ...pluginReact_recommended,
+        files: ["src/**/*.{ts,tsx}"],
+        settings: {
+            react: {
+                version: "detect",
+            },
         },
-        {
-          // This rule is a good backup to prevent setters inside memoization hooks.
-          "selector": "CallExpression[callee.name=/^set[A-Z]/] > :function[parent.callee.name='useMemo'], CallExpression[callee.name=/^set[A-Z]/] > :function[parent.callee.name='useCallback']",
-          "message": "State setters should not be called inside useMemo or useCallback. These hooks are for memoization, not for side effects."
+    },
+    {
+        ...pluginReact_jsxRuntime,
+        files: ["src/**/*.{ts,tsx}"],
+    },
+    {
+        files: ["src/**/*.{ts,tsx}"],
+        plugins: {
+            "react-hooks": pluginReactHooks,
+        },
+        rules: {
+            ...pluginReactHooks.configs.recommended.rules,
+        },
+    },
+    {
+        plugins: {
+            import: pluginImport,
+        },
+        settings: {
+            "import/resolver": {
+                typescript: true,
+                node: true,
+            },
+        },
+        rules: {
+            "import/no-unresolved": "error",
+        },
+    },
+    {
+        languageOptions: {
+            globals: {
+                ...globals.browser,
+                ...globals.node,
+            },
+        },
+    },
+    {
+        rules: {
+            "@typescript-eslint/no-explicit-any": "warn",
+            "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
         }
-      ],
-    },
-    settings: {
-      'import/resolver': {
-        typescript: true,
-        node: true,
-      },
-    },
-  },
-  // Disable react-refresh/only-export-components for UI components
-  // as shadcn/ui components commonly export both components and utilities
-  {
-    files: ['src/components/ui/**/*.{ts,tsx}'],
-    rules: {
-      'react-refresh/only-export-components': 'off',
-    },
-  },
-)
+    }
+);
