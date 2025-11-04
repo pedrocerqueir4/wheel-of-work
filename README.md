@@ -1,6 +1,6 @@
 # Wheel of Work (WOW)
 
-[cloudflarebutton]
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/pedrocerqueir4/wheel-of-work)
 
 A playful, gamified task manager that helps you decide what to do next by spinning a wheel, combined with a Pomodoro timer to keep you focused.
 
@@ -91,4 +91,4 @@ This project is designed for seamless deployment to the Cloudflare ecosystem. Th
 
 2.  **Or, deploy with a single click:**
 
-    [cloudflarebutton]
+    [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/pedrocerqueir4/wheel-of-work)
