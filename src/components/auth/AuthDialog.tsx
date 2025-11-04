@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const authSchema = z.object({
   username: z.string().min(3, { message: "Username must be at least 3 characters." }),
+  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
 });
 type AuthFormValues = z.infer<typeof authSchema>;
 export function AuthDialog() {
@@ -33,13 +34,10 @@ export function AuthDialog() {
   const isLoading = useAppStore((s) => s.isLoading);
   const form = useForm<AuthFormValues>({
     resolver: zodResolver(authSchema),
-    defaultValues: { username: "" },
+    defaultValues: { username: "", password: "" },
   });
-  const handleLogin = (values: AuthFormValues) => {
-    login(values.username);
-  };
-  const handleRegister = (values: AuthFormValues) => {
-    register(values.username);
+  const handleSubmit = (handler: (values: AuthFormValues) => void) => {
+    return (values: AuthFormValues) => handler(values);
   };
   return (
     <Dialog open={isAuthDialogOpen} onOpenChange={closeAuthDialog}>
@@ -57,7 +55,7 @@ export function AuthDialog() {
           </TabsList>
           <TabsContent value="login">
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleLogin)} className="space-y-4 pt-4">
+              <form onSubmit={form.handleSubmit(handleSubmit(login))} className="space-y-4 pt-4">
                 <FormField
                   control={form.control}
                   name="username"
@@ -66,6 +64,19 @@ export function AuthDialog() {
                       <FormLabel>Username</FormLabel>
                       <FormControl>
                         <Input placeholder="Your username" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="Your password" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -80,7 +91,7 @@ export function AuthDialog() {
           </TabsContent>
           <TabsContent value="register">
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleRegister)} className="space-y-4 pt-4">
+              <form onSubmit={form.handleSubmit(handleSubmit(register))} className="space-y-4 pt-4">
                 <FormField
                   control={form.control}
                   name="username"
@@ -89,6 +100,19 @@ export function AuthDialog() {
                       <FormLabel>Username</FormLabel>
                       <FormControl>
                         <Input placeholder="Choose a username" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="Choose a password" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

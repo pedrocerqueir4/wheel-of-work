@@ -19,7 +19,7 @@ export function AppHeader() {
             {user ? (
               <div className="flex items-center gap-4">
                 <span className="text-sm font-medium text-muted-foreground">
-                  Hi, {user.name}!
+                  Hi, {user.username}!
                 </span>
                 <Button variant="outline" size="sm" onClick={logout}>
                   <LogOut className="mr-2 h-4 w-4" />

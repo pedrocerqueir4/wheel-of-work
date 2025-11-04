@@ -13,6 +13,12 @@ export interface Task {
 export type WheelMode = 'hard-working' | 'time-to-work' | 'normal' | 'advanced';
 export interface User {
   id: string;
-  name: string;
+  username: string;
   tasks: Task[];
 }
+// Payloads for authentication to avoid passing passwords in the main User model
+export interface LoginPayload {
+  username: string;
+  password: string;
+}
+export interface RegisterPayload extends LoginPayload {}

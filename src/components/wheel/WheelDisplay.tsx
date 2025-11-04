@@ -15,11 +15,20 @@ const categoryColors: Record<TaskCategory, string> = {
   leisure: "rgb(251 191 36)",
   creative: "rgb(236 72 153)",
 };
-const getPath = (startAngle: number, endAngle: number) => {
+const getPath = (startAngle: number, endAngle: number, radius: number) => {
+  const start = { x: 50 + radius * Math.cos(startAngle), y: 50 + radius * Math.sin(startAngle) };
+  const end = { x: 50 + radius * Math.cos(endAngle), y: 50 + radius * Math.sin(endAngle) };
+  const largeArcFlag = endAngle - startAngle <= Math.PI ? "0" : "1";
+  return ["M", start.x, start.y, "A", radius, radius, 0, largeArcFlag, 1, end.x, end.y].join(" ");
+};
+const getSegmentPath = (startAngle: number, endAngle: number) => {
   const start = { x: 50 + 48 * Math.cos(startAngle), y: 50 + 48 * Math.sin(startAngle) };
   const end = { x: 50 + 48 * Math.cos(endAngle), y: 50 + 48 * Math.sin(endAngle) };
   const largeArcFlag = endAngle - startAngle <= Math.PI ? "0" : "1";
   return ["M", 50, 50, "L", start.x, start.y, "A", 48, 48, 0, largeArcFlag, 1, end.x, end.y, "Z"].join(" ");
+};
+const truncateText = (text: string, maxLength: number) => {
+  return text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
 };
 export function WheelDisplay() {
   const tasks = useAppStore(useShallow((s) => s.user?.tasks ?? []));
@@ -59,7 +68,8 @@ export function WheelDisplay() {
     if (numTasks === 0) return [];
     const anglePerSegment = (2 * Math.PI) / numTasks;
     return filteredTasks.map((task, i) => ({
-      path: getPath(i * anglePerSegment - Math.PI / 2, (i + 1) * anglePerSegment - Math.PI / 2),
+      path: getSegmentPath(i * anglePerSegment - Math.PI / 2, (i + 1) * anglePerSegment - Math.PI / 2),
+      textPath: getPath(i * anglePerSegment - Math.PI / 2, (i + 1) * anglePerSegment - Math.PI / 2, 30),
       color: categoryColors[task.category],
       task,
     }));
@@ -100,16 +110,28 @@ export function WheelDisplay() {
         <div className="relative w-full max-w-sm aspect-square">
           <motion.div className="w-full h-full" animate={{ rotate: rotation }} transition={{ type: "spring", stiffness: 20, damping: 15, mass: 2 }} onAnimationComplete={() => setIsSpinning(false)}>
             <svg viewBox="0 0 100 100" className="w-full h-full">
+              <defs>
+                {segments.map((segment, i) => (
+                  <path key={`textpath-${segment.task.id}-${i}`} id={`textpath-${segment.task.id}-${i}`} d={segment.textPath} />
+                ))}
+              </defs>
               <AnimatePresence>
                 {segments.length > 0 ? (
                   segments.map((segment, i) => (
-                    <motion.path key={segment.task.id + i} d={segment.path} fill={segment.color} stroke="#fff" strokeWidth="2" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.3, delay: i * 0.05 }} />
+                    <motion.g key={segment.task.id + i}>
+                      <motion.path d={segment.path} fill={segment.color} stroke="#fff" strokeWidth="2" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.3, delay: i * 0.05 }} />
+                      <text dy="-4" fill="#fff" style={{ fontSize: '4px', fontWeight: 'bold', textShadow: '0 0 2px rgba(0,0,0,0.5)' }}>
+                        <textPath href={`#textpath-${segment.task.id}-${i}`} startOffset="50%" textAnchor="middle">
+                          {truncateText(segment.task.title, 15)}
+                        </textPath>
+                      </text>
+                    </motion.g>
                   ))
                 ) : (
                   <circle cx="50" cy="50" r="48" fill="hsl(var(--muted))" stroke="hsl(var(--border))" strokeWidth="2" />
                 )}
               </AnimatePresence>
-              <circle cx="50" cy="50" r="10" fill="#fff" />
+              <circle cx="50" cy="50" r="10" fill="#fff" stroke="hsl(var(--border))" strokeWidth="0.5" />
               <circle cx="50" cy="50" r="8" fill="hsl(var(--background))" />
             </svg>
           </motion.div>

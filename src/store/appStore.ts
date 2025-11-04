@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { User, Task, TaskCategory, WheelMode } from '@shared/types';
+import type { User, Task, TaskCategory, WheelMode, LoginPayload, RegisterPayload } from '@shared/types';
 import { api } from '@/lib/api-client';
 import { toast } from 'sonner';
 import { triggerConfetti } from '@/lib/confetti';
@@ -19,8 +19,8 @@ type AppState = {
   advancedModeCategories: Record<TaskCategory, boolean>;
 };
 type AppActions = {
-  login: (username: string) => Promise<void>;
-  register: (username: string) => Promise<void>;
+  login: (payload: LoginPayload) => Promise<void>;
+  register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
   addTask: (taskData: { title: string; category: TaskCategory }) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
@@ -56,30 +56,30 @@ export const useAppStore = create<AppState & AppActions>()(
       leisure: true,
       creative: true,
     },
-    login: async (username) => {
+    login: async (payload) => {
       set({ isLoading: true });
       try {
         const user = await api<User>('/api/auth/login', {
           method: 'POST',
-          body: JSON.stringify({ name: username }),
+          body: JSON.stringify(payload),
         });
         set({ user, isLoading: false, isAuthDialogOpen: false });
-        toast.success(`Welcome back, ${user.name}!`);
+        toast.success(`Welcome back, ${user.username}!`);
       } catch (error) {
         console.error("Login failed:", error);
         toast.error((error as Error).message || "Login failed. Please try again.");
         set({ isLoading: false });
       }
     },
-    register: async (username) => {
+    register: async (payload) => {
       set({ isLoading: true });
       try {
         const user = await api<User>('/api/auth/register', {
           method: 'POST',
-          body: JSON.stringify({ name: username }),
+          body: JSON.stringify(payload),
         });
         set({ user, isLoading: false, isAuthDialogOpen: false });
-        toast.success(`Welcome, ${user.name}! Your account is created.`);
+        toast.success(`Welcome, ${user.username}! Your account is created.`);
       } catch (error) {
         console.error("Registration failed:", error);
         toast.error((error as Error).message || "Registration failed. Please try again.");
@@ -243,9 +243,20 @@ export const useAppStore = create<AppState & AppActions>()(
     pullLeisureTask: () => {
       const { user, taskQueue } = get();
       if (!user) return;
-      const leisureTasks = user.tasks.filter(t => t.category === 'leisure');
+      // 1. Check if a leisure task is already in the queue (but not at the front)
+      const leisureTaskIndexInQueue = taskQueue.findIndex((task, index) => task.category === 'leisure' && index > 0);
+      if (leisureTaskIndexInQueue !== -1) {
+        const taskToPromote = taskQueue[leisureTaskIndexInQueue];
+        set(state => {
+          state.taskQueue.splice(leisureTaskIndexInQueue, 1);
+          state.taskQueue.unshift(taskToPromote);
+        });
+        toast.success(`Break time! Moved "${taskToPromote.title}" to the front.`);
+        return;
+      }
+      // 2. If not, find a new leisure task from the user's main list that isn't already in the queue
       const queuedTaskIds = new Set(taskQueue.map(t => t.id));
-      const availableLeisureTasks = leisureTasks.filter(t => !queuedTaskIds.has(t.id));
+      const availableLeisureTasks = user.tasks.filter(t => t.category === 'leisure' && !queuedTaskIds.has(t.id));
       if (availableLeisureTasks.length > 0) {
         const taskToPull = availableLeisureTasks[Math.floor(Math.random() * availableLeisureTasks.length)];
         set(state => {

@@ -1,12 +1,17 @@
 import { IndexedEntity } from "./core-utils";
 import type { User, Task } from "@shared/types";
-export class WowUserEntity extends IndexedEntity<User> {
+// This is the shape of the data stored in the Durable Object, including the password hash.
+export interface UserWithPassword extends User {
+  passwordHash: string;
+}
+export class WowUserEntity extends IndexedEntity<UserWithPassword> {
   static readonly entityName = "wow-user";
   static readonly indexName = "wow-users";
-  static readonly initialState: User = { id: "", name: "", tasks: [] };
-  // Override keyOf to use name as the unique ID for login purposes
-  static override keyOf(state: User): string {
-    return state.name.toLowerCase();
+  static readonly initialState: UserWithPassword = { id: "", username: "", tasks: [], passwordHash: "" };
+  // Correct the signature to be compatible with the base class generic constraint.
+  // We use `username` as the key, which also serves as the `id`.
+  static override keyOf(state: { username: string }): string {
+    return state.username.toLowerCase();
   }
   async getTasks(): Promise<Task[]> {
     const { tasks } = await this.getState();
