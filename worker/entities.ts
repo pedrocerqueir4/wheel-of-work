@@ -49,9 +49,11 @@ export class WowUserEntity extends IndexedEntity<UserWithPassword> {
       completedAt: Date.now(),
     };
     const updatedUser = await this.mutate(s => {
-      s.tasks = s.tasks.filter(t => t.id !== taskId);
-      s.completedTasks.push(completedTask);
-      return s;
+      return {
+        ...s,
+        tasks: s.tasks.filter(t => t.id !== taskId),
+        completedTasks: [...s.completedTasks, completedTask],
+      };
     });
     return updatedUser;
   }
