@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppStore } from "@/store/appStore";
 import type { Task, TaskCategory } from "@shared/types";
-import { Plus, Trash2, Briefcase, Coffee, Brush } from "lucide-react";
+import { Plus, Trash2, Briefcase, Coffee, Brush, Tally5 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 const categoryConfig = {
   work: { icon: Briefcase, color: "text-brand-blue" },
   leisure: { icon: Coffee, color: "text-brand-yellow" },
@@ -19,6 +20,12 @@ function TaskItem({ task }: { task: Task }) {
       <div className="flex items-center gap-3">
         <Icon className={`h-5 w-5 ${categoryConfig[task.category].color}`} />
         <span className="font-medium">{task.title}</span>
+        {task.completedPomodoros > 0 && (
+          <Badge variant="secondary" className="flex items-center gap-1">
+            <Tally5 className="h-3 w-3" />
+            {task.completedPomodoros}
+          </Badge>
+        )}
       </div>
       <Button
         variant="ghost"

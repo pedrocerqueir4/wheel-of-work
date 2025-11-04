@@ -38,6 +38,7 @@ type AppActions = {
   skipTask: () => void;
   completeTask: () => void;
   pullLeisureTask: () => void;
+  clearTaskQueue: () => void;
   _tick: () => void;
 };
 let timerInterval: NodeJS.Timeout | null = null;
@@ -291,6 +292,17 @@ export const useAppStore = create<AppState & AppActions>()(
         } else {
           toast.warning("No available leisure tasks to pull!");
         }
+      },
+      clearTaskQueue: () => {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = null;
+        set({
+          taskQueue: [],
+          pomodoroState: 'idle',
+          timer: POMODORO_DURATION,
+          currentTaskInSession: null,
+        });
+        toast.info("Task queue has been cleared.");
       },
       _tick: () => {
         set(state => {

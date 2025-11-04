@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Utensils, Play, Pause, RotateCcw, SkipForward } from "lucide-react";
+import { Utensils, Play, Pause, RotateCcw, SkipForward, Trash2 } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { AnimatePresence, motion } from "framer-motion";
 const formatTime = (seconds: number) => {
@@ -19,6 +19,7 @@ export function PomodoroDisplay() {
   const resetPomodoro = useAppStore((s) => s.resetPomodoro);
   const skipTask = useAppStore((s) => s.skipTask);
   const pullLeisureTask = useAppStore((s) => s.pullLeisureTask);
+  const clearTaskQueue = useAppStore((s) => s.clearTaskQueue);
   const isControlDisabled = pomodoroState === 'idle' && taskQueue.length === 0;
   const isSkipDisabled = !currentTask || pomodoroState === 'break';
   return (
@@ -92,10 +93,16 @@ export function PomodoroDisplay() {
             </AnimatePresence>
           </div>
         </div>
-        <Button variant="secondary" className="w-full" onClick={pullLeisureTask}>
-          <Utensils className="mr-2 h-4 w-4" />
-          Meal Button (Get a break!)
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+            <Button variant="secondary" className="w-full" onClick={pullLeisureTask}>
+              <Utensils className="mr-2 h-4 w-4" />
+              Meal Button
+            </Button>
+            <Button variant="destructive" className="w-full" onClick={clearTaskQueue} disabled={taskQueue.length === 0}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Clear Queue
+            </Button>
+        </div>
       </CardContent>
     </Card>
   );
