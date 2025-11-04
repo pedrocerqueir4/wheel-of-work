@@ -255,8 +255,7 @@ export const useAppStore = create<AppState & AppActions>()(
         }
       },
       completePomodoro: async () => {
-        if (timerInterval) clearInterval(timerInterval);
-        timerInterval = null;
+        // Note: timerInterval is NOT cleared here, as _tick is still running for the break.
         const { currentTaskInSession } = get();
         if (!currentTaskInSession) return;
         try {
@@ -272,15 +271,7 @@ export const useAppStore = create<AppState & AppActions>()(
             state.timer = SHORT_BREAK_DURATION;
             state.currentTaskInSession = null;
           });
-          setTimeout(() => {
-            set(state => {
-              state.pomodoroState = 'idle';
-              state.timer = POMODORO_DURATION;
-            });
-            if (get().taskQueue.length > 0) {
-              get().startPomodoro();
-            }
-          }, SHORT_BREAK_DURATION * 1000);
+          // The _tick function will now handle the break timer.
         } catch (error) {
           console.error("Failed to complete task:", error);
           toast.error("Failed to sync task completion. Please try again.");
@@ -327,11 +318,30 @@ export const useAppStore = create<AppState & AppActions>()(
         toast.info("Task queue has been cleared.");
       },
       _tick: () => {
+        const { pomodoroState } = get();
+        if (pomodoroState !== 'running' && pomodoroState !== 'break') return;
+
         set(state => {
           if (state.timer > 0) {
             state.timer -= 1;
           } else {
-            get().completePomodoro();
+            if (state.pomodoroState === 'running') {
+              get().completePomodoro();
+            } else if (state.pomodoroState === 'break') {
+              // Break is over
+              if (timerInterval) clearInterval(timerInterval);
+              timerInterval = null;
+              state.pomodoroState = 'idle';
+              state.timer = POMODORO_DURATION;
+
+              if (state.taskQueue.length > 0) {
+                toast.info("Break's over! Starting next task.");
+                // Use a timeout to avoid immediate state change issues with React
+                setTimeout(() => get().startPomodoro(), 100);
+              } else {
+                toast.success("All tasks completed! Great work.");
+              }
+            }
           }
         });
       },

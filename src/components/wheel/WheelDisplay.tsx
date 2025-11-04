@@ -88,16 +88,16 @@ export function WheelDisplay() {
     if (filteredTasks.length === 0) return [];
     let cumulativeAngle = -Math.PI / 2;
     if (wheelMode === 'advanced') {
-      const enabledWeights = (Object.keys(advancedModeWeights) as TaskCategory[])
-        .filter(cat => advancedCategories[cat])
-        .reduce((acc, cat) => ({ ...acc, [cat]: advancedModeWeights[cat] }), {} as Record<TaskCategory, number>);
-      const totalWeight = Object.values(enabledWeights).reduce((sum, w) => sum + w, 0);
-      if (totalWeight === 0) return [];
       const tasksByCat = filteredTasks.reduce((acc, task) => {
         if (!acc[task.category]) acc[task.category] = [];
         acc[task.category].push(task);
         return acc;
       }, {} as Record<TaskCategory, Task[]>);
+      const enabledWeights = (Object.keys(advancedModeWeights) as TaskCategory[])
+        .filter(cat => advancedCategories[cat] && tasksByCat[cat]?.length > 0)
+        .reduce((acc, cat) => ({ ...acc, [cat]: advancedModeWeights[cat] }), {} as Record<TaskCategory, number>);
+      const totalWeight = Object.values(enabledWeights).reduce((sum, w) => sum + w, 0);
+      if (totalWeight === 0) return [];
       const result: any[] = [];
       (Object.keys(tasksByCat) as TaskCategory[]).forEach(cat => {
         const catTasks = tasksByCat[cat];
@@ -120,6 +120,19 @@ export function WheelDisplay() {
       });
       return result;
     } else {
+      if (filteredTasks.length === 1) {
+        const task = filteredTasks[0];
+        const startAngle = -Math.PI / 2;
+        const endAngle = 3 * Math.PI / 2;
+        return [{
+          path: getSegmentPath(startAngle, endAngle),
+          textPath: getPath(startAngle, endAngle, 30),
+          color: categoryColors[task.category],
+          task,
+          startAngle,
+          endAngle,
+        }];
+      }
       const anglePerSegment = (2 * Math.PI) / filteredTasks.length;
       return filteredTasks.map((task, i) => {
         const startAngle = cumulativeAngle;
