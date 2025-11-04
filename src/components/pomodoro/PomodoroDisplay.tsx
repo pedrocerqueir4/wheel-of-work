@@ -1,11 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Utensils, Play, Pause, RotateCcw } from "lucide-react";
+import { Utensils, Play, Pause, RotateCcw, SkipForward } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect } from "react";
-import { triggerConfetti } from "@/lib/confetti";
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
@@ -19,15 +17,10 @@ export function PomodoroDisplay() {
   const startPomodoro = useAppStore((s) => s.startPomodoro);
   const pausePomodoro = useAppStore((s) => s.pausePomodoro);
   const resetPomodoro = useAppStore((s) => s.resetPomodoro);
+  const skipTask = useAppStore((s) => s.skipTask);
   const pullLeisureTask = useAppStore((s) => s.pullLeisureTask);
   const isControlDisabled = pomodoroState === 'idle' && taskQueue.length === 0;
-  useEffect(() => {
-    if (pomodoroState === 'break') {
-      // This effect was moved to the store action `completeTask` to ensure it fires once per completion.
-      // If we want it tied to the component lifecycle, this is the place.
-      // The current implementation in the store is more reliable.
-    }
-  }, [pomodoroState]);
+  const isSkipDisabled = !currentTask || pomodoroState === 'break';
   return (
     <Card className="rounded-2xl shadow-soft">
       <CardHeader>
@@ -65,6 +58,9 @@ export function PomodoroDisplay() {
           )}
           <Button onClick={resetPomodoro} variant="ghost" disabled={isControlDisabled}>
             <RotateCcw className="mr-2 h-4 w-4" /> Reset
+          </Button>
+          <Button onClick={skipTask} variant="ghost" disabled={isSkipDisabled}>
+            <SkipForward className="mr-2 h-4 w-4" /> Skip
           </Button>
         </div>
         <Separator />

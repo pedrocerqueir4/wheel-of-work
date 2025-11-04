@@ -18,6 +18,7 @@ type AppState = {
   timer: number;
   currentTaskInSession: Task | null;
   advancedModeCategories: Record<TaskCategory, boolean>;
+  advancedModeWeights: Record<TaskCategory, number>;
 };
 type AppActions = {
   login: (payload: LoginPayload) => Promise<void>;
@@ -29,21 +30,17 @@ type AppActions = {
   closeAuthDialog: () => void;
   setWheelMode: (mode: WheelMode) => void;
   toggleAdvancedCategory: (category: TaskCategory) => void;
+  setAdvancedWeight: (category: TaskCategory, weight: number) => void;
   spinWheel: () => Task | null;
   startPomodoro: () => void;
   pausePomodoro: () => void;
   resetPomodoro: () => void;
+  skipTask: () => void;
   completeTask: () => void;
   pullLeisureTask: () => void;
   _tick: () => void;
 };
 let timerInterval: NodeJS.Timeout | null = null;
-const getApiOptions = (user: User | null) => {
-  if (!user) return {};
-  // Header is now set globally via setApiAuthHeader, but we keep this for potential future use
-  // or if a specific call needs to override it. For now, it's redundant but harmless.
-  return { headers: { 'X-User-Id': user.id } };
-};
 export const useAppStore = create<AppState & AppActions>()(
   persist(
     immer((set, get) => ({
@@ -60,6 +57,11 @@ export const useAppStore = create<AppState & AppActions>()(
         leisure: true,
         creative: true,
       },
+      advancedModeWeights: {
+        work: 40,
+        leisure: 20,
+        creative: 40,
+      },
       login: async (payload) => {
         set({ isLoading: true });
         try {
@@ -67,6 +69,7 @@ export const useAppStore = create<AppState & AppActions>()(
             method: 'POST',
             body: JSON.stringify(payload),
           });
+          setApiAuthHeader(user.id);
           set({ user, isLoading: false, isAuthDialogOpen: false });
           toast.success(`Welcome back, ${user.username}!`);
         } catch (error) {
@@ -82,6 +85,7 @@ export const useAppStore = create<AppState & AppActions>()(
             method: 'POST',
             body: JSON.stringify(payload),
           });
+          setApiAuthHeader(user.id);
           set({ user, isLoading: false, isAuthDialogOpen: false });
           toast.success(`Welcome, ${user.username}! Your account is created.`);
         } catch (error) {
@@ -92,6 +96,7 @@ export const useAppStore = create<AppState & AppActions>()(
       },
       logout: () => {
         get().pausePomodoro();
+        setApiAuthHeader(null);
         set({
           user: null,
           taskQueue: [],
@@ -108,7 +113,6 @@ export const useAppStore = create<AppState & AppActions>()(
           const newTask = await api<Task>('/api/tasks', {
             method: 'POST',
             body: JSON.stringify(taskData),
-            ...getApiOptions(user),
           });
           set((state) => {
             state.user?.tasks.push(newTask);
@@ -125,7 +129,6 @@ export const useAppStore = create<AppState & AppActions>()(
         try {
           await api(`/api/tasks/${taskId}`, {
             method: 'DELETE',
-            ...getApiOptions(user),
           });
           set((state) => {
             if (state.user) {
@@ -146,16 +149,22 @@ export const useAppStore = create<AppState & AppActions>()(
           state.advancedModeCategories[category] = !state.advancedModeCategories[category];
         });
       },
+      setAdvancedWeight: (category, weight) => {
+        set(state => {
+          state.advancedModeWeights[category] = weight;
+        });
+      },
       spinWheel: () => {
         const { user, wheelMode, taskQueue, advancedModeCategories } = get();
         if (!user) return null;
+        const queuedTaskIds = new Set(taskQueue.map(t => t.id));
         let availableTasks: Task[] = [];
         switch (wheelMode) {
           case 'hard-working':
-            availableTasks = user.tasks.filter(t => t.category === 'work');
+            availableTasks = user.tasks.filter(t => t.category === 'work' && !queuedTaskIds.has(t.id));
             break;
           case 'time-to-work':
-            availableTasks = user.tasks.filter(t => t.category === 'work' || t.category === 'creative');
+            availableTasks = user.tasks.filter(t => (t.category === 'work' || t.category === 'creative') && !queuedTaskIds.has(t.id));
             break;
           case 'advanced':
             const enabledCategories = Object.entries(advancedModeCategories)
@@ -165,11 +174,11 @@ export const useAppStore = create<AppState & AppActions>()(
               toast.error("No categories selected in Advanced mode.");
               return null;
             }
-            availableTasks = user.tasks.filter(t => enabledCategories.includes(t.category));
+            availableTasks = user.tasks.filter(t => enabledCategories.includes(t.category) && !queuedTaskIds.has(t.id));
             break;
           case 'normal':
           default:
-            availableTasks = user.tasks;
+            availableTasks = user.tasks.filter(t => !queuedTaskIds.has(t.id));
             break;
         }
         if (availableTasks.length === 0) {
@@ -182,7 +191,7 @@ export const useAppStore = create<AppState & AppActions>()(
           state.taskQueue.push(selectedTask);
         });
         toast.success(`Task selected: ${selectedTask.title}`);
-        if (get().pomodoroState === 'idle' && taskQueue.length === 0) {
+        if (get().pomodoroState === 'idle' && get().taskQueue.length === 1) {
           setTimeout(() => get().startPomodoro(), 500);
         }
         return selectedTask;
@@ -216,6 +225,20 @@ export const useAppStore = create<AppState & AppActions>()(
           timer: POMODORO_DURATION,
           currentTaskInSession: null,
         });
+      },
+      skipTask: () => {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = null;
+        toast.info(`Skipped: ${get().currentTaskInSession?.title}`);
+        set(state => {
+          state.taskQueue.shift();
+          state.pomodoroState = 'idle';
+          state.timer = POMODORO_DURATION;
+          state.currentTaskInSession = null;
+        });
+        if (get().taskQueue.length > 0) {
+          get().startPomodoro();
+        }
       },
       completeTask: () => {
         if (timerInterval) clearInterval(timerInterval);
@@ -286,13 +309,6 @@ export const useAppStore = create<AppState & AppActions>()(
       onRehydrateStorage: () => (state) => {
         if (state?.user) {
           setApiAuthHeader(state.user.id);
-        }
-      },
-      // This listener ensures that when the user logs in/out, the API header is updated.
-      // It triggers on any state change, but we only act if the user object's reference changes.
-      onStateChange: (state, oldState) => {
-        if (state.user !== oldState.user) {
-          setApiAuthHeader(state.user?.id ?? null);
         }
       },
     }

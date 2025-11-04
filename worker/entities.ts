@@ -9,9 +9,9 @@ export class WowUserEntity extends IndexedEntity<UserWithPassword> {
   static readonly indexName = "wow-users";
   static readonly initialState: UserWithPassword = { id: "", username: "", tasks: [], passwordHash: "" };
   // Correct the signature to be compatible with the base class generic constraint.
-  // We use `username` as the key, which also serves as the `id`.
-  static override keyOf(state: { username: string }): string {
-    return state.username.toLowerCase();
+  // The user's ID is the key, which is derived from the username.
+  static override keyOf(state: { id: string }): string {
+    return state.id;
   }
   async getTasks(): Promise<Task[]> {
     const { tasks } = await this.getState();

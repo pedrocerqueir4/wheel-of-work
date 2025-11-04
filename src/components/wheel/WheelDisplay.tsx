@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -9,6 +9,7 @@ import type { Task, TaskCategory, WheelMode } from "@shared/types";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Slider } from "@/components/ui/slider";
 import { useShallow } from 'zustand/react/shallow';
 const categoryColors: Record<TaskCategory, string> = {
   work: "rgb(96 165 250)",
@@ -31,49 +32,125 @@ const truncateText = (text: string, maxLength: number) => {
   return text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
 };
 export function WheelDisplay() {
-  const tasks = useAppStore(useShallow((s) => s.user?.tasks ?? []));
-  const wheelMode = useAppStore((s) => s.wheelMode);
+  const { tasks, taskQueue, wheelMode, advancedCategories, advancedModeWeights } = useAppStore(
+    useShallow((s) => ({
+      tasks: s.user?.tasks ?? [],
+      taskQueue: s.taskQueue,
+      wheelMode: s.wheelMode,
+      advancedCategories: s.advancedModeCategories,
+      advancedModeWeights: s.advancedModeWeights,
+    }))
+  );
   const setWheelMode = useAppStore((s) => s.setWheelMode);
   const spinWheelAction = useAppStore((s) => s.spinWheel);
-  const advancedCategories = useAppStore((s) => s.advancedModeCategories);
   const toggleAdvancedCategory = useAppStore((s) => s.toggleAdvancedCategory);
+  const setAdvancedWeight = useAppStore((s) => s.setAdvancedWeight);
   const [rotation, setRotation] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
+  const handleWeightChange = (category: TaskCategory, value: number[]) => {
+    const newWeight = value[0];
+    const otherCategories = (Object.keys(advancedModeWeights) as TaskCategory[]).filter(c => c !== category);
+    const currentTotal = Object.values(advancedModeWeights).reduce((sum, w) => sum + w, 0);
+    const remainingWeight = 100 - newWeight;
+    if (otherCategories.length > 0) {
+      const otherTotal = currentTotal - advancedModeWeights[category];
+      otherCategories.forEach(cat => {
+        const proportion = advancedModeWeights[cat] / otherTotal;
+        const adjustedWeight = Math.round(remainingWeight * proportion);
+        setAdvancedWeight(cat, adjustedWeight);
+      });
+    }
+    setAdvancedWeight(category, newWeight);
+    // Final normalization pass to ensure it's exactly 100
+    const finalWeights = { ...useAppStore.getState().advancedModeWeights, [category]: newWeight };
+    const finalTotal = Object.values(finalWeights).reduce((sum, w) => sum + w, 0);
+    if (finalTotal !== 100 && otherCategories.length > 0) {
+      const diff = 100 - finalTotal;
+      setAdvancedWeight(otherCategories[0], finalWeights[otherCategories[0]] + diff);
+    }
+  };
   const filteredTasks = useMemo(() => {
+    const queuedTaskIds = new Set(taskQueue.map(t => t.id));
+    const availableTasks = tasks.filter(t => !queuedTaskIds.has(t.id));
     switch (wheelMode) {
-      case 'hard-working': return tasks.filter(t => t.category === 'work');
-      case 'time-to-work': return tasks.filter(t => t.category === 'work' || t.category === 'creative');
+      case 'hard-working': return availableTasks.filter(t => t.category === 'work');
+      case 'time-to-work': return availableTasks.filter(t => t.category === 'work' || t.category === 'creative');
       case 'advanced':
         const enabled = Object.keys(advancedCategories).filter(k => advancedCategories[k as TaskCategory]) as TaskCategory[];
-        return tasks.filter(t => enabled.includes(t.category));
-      case 'normal': default: return tasks;
+        return availableTasks.filter(t => enabled.includes(t.category));
+      case 'normal': default: return availableTasks;
     }
-  }, [tasks, wheelMode, advancedCategories]);
+  }, [tasks, wheelMode, advancedCategories, taskQueue]);
+  const segments = useMemo(() => {
+    if (filteredTasks.length === 0) return [];
+    let cumulativeAngle = -Math.PI / 2;
+    if (wheelMode === 'advanced') {
+      const enabledWeights = (Object.keys(advancedModeWeights) as TaskCategory[])
+        .filter(cat => advancedCategories[cat])
+        .reduce((acc, cat) => ({ ...acc, [cat]: advancedModeWeights[cat] }), {} as Record<TaskCategory, number>);
+      const totalWeight = Object.values(enabledWeights).reduce((sum, w) => sum + w, 0);
+      if (totalWeight === 0) return [];
+      const tasksByCat = filteredTasks.reduce((acc, task) => {
+        if (!acc[task.category]) acc[task.category] = [];
+        acc[task.category].push(task);
+        return acc;
+      }, {} as Record<TaskCategory, Task[]>);
+      const result: any[] = [];
+      (Object.keys(tasksByCat) as TaskCategory[]).forEach(cat => {
+        const catTasks = tasksByCat[cat];
+        const catWeight = enabledWeights[cat] ?? 0;
+        const angleForCat = (catWeight / totalWeight) * 2 * Math.PI;
+        const anglePerTask = angleForCat / catTasks.length;
+        catTasks.forEach(task => {
+          const startAngle = cumulativeAngle;
+          const endAngle = cumulativeAngle + anglePerTask;
+          result.push({
+            path: getSegmentPath(startAngle, endAngle),
+            textPath: getPath(startAngle, endAngle, 30),
+            color: categoryColors[task.category],
+            task,
+            startAngle,
+            endAngle,
+          });
+          cumulativeAngle = endAngle;
+        });
+      });
+      return result;
+    } else {
+      const anglePerSegment = (2 * Math.PI) / filteredTasks.length;
+      return filteredTasks.map((task, i) => {
+        const startAngle = cumulativeAngle;
+        const endAngle = cumulativeAngle + anglePerSegment;
+        cumulativeAngle = endAngle;
+        return {
+          path: getSegmentPath(startAngle, endAngle),
+          textPath: getPath(startAngle, endAngle, 30),
+          color: categoryColors[task.category],
+          task,
+          startAngle,
+          endAngle,
+        };
+      });
+    }
+  }, [filteredTasks, wheelMode, advancedModeWeights, advancedCategories]);
   const handleSpin = () => {
-    if (isSpinning || filteredTasks.length === 0) return;
+    if (isSpinning || segments.length === 0) return;
     const selectedTask = spinWheelAction();
     if (!selectedTask) return;
-    const selectedIndex = filteredTasks.findIndex(t => t.id === selectedTask.id);
-    const totalTasks = filteredTasks.length;
-    const anglePerTask = 360 / totalTasks;
-    const randomOffset = (Math.random() - 0.5) * anglePerTask * 0.8;
-    const targetAngle = 360 - (selectedIndex * anglePerTask + anglePerTask / 2) + randomOffset;
+    const selectedSegment = segments.find(s => s.task.id === selectedTask.id);
+    if (!selectedSegment) return;
+    const { startAngle, endAngle } = selectedSegment;
+    const middleAngle = (startAngle + endAngle) / 2;
+    const randomOffset = (Math.random() - 0.5) * (endAngle - startAngle) * 0.8;
+    const targetAngleRad = middleAngle + randomOffset;
+    const targetAngleDeg = (targetAngleRad * 180) / Math.PI;
+    const pointerCorrection = 90;
+    const finalTargetDeg = 360 - targetAngleDeg - pointerCorrection;
     const fullSpins = 5;
-    const newRotation = rotation + (360 * fullSpins) + targetAngle;
+    const newRotation = rotation - (rotation % 360) + (360 * fullSpins) + finalTargetDeg;
     setIsSpinning(true);
     setRotation(newRotation);
   };
-  const segments = useMemo(() => {
-    const numTasks = filteredTasks.length;
-    if (numTasks === 0) return [];
-    const anglePerSegment = (2 * Math.PI) / numTasks;
-    return filteredTasks.map((task, i) => ({
-      path: getSegmentPath(i * anglePerSegment - Math.PI / 2, (i + 1) * anglePerSegment - Math.PI / 2),
-      textPath: getPath(i * anglePerSegment - Math.PI / 2, (i + 1) * anglePerSegment - Math.PI / 2, 30),
-      color: categoryColors[task.category],
-      task,
-    }));
-  }, [filteredTasks]);
   return (
     <Card className="rounded-2xl shadow-soft overflow-hidden">
       <CardContent className="p-6 md:p-8 flex flex-col items-center justify-center space-y-6">
@@ -89,17 +166,27 @@ export function WheelDisplay() {
                 <Settings className="h-4 w-4" /> Advanced
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-60">
+            <PopoverContent className="w-80">
               <div className="grid gap-4">
                 <div className="space-y-2">
                   <h4 className="font-medium leading-none">Advanced Settings</h4>
-                  <p className="text-sm text-muted-foreground">Select categories to include.</p>
+                  <p className="text-sm text-muted-foreground">Select categories and their weights.</p>
                 </div>
-                <div className="grid gap-2">
+                <div className="grid gap-4">
                   {(Object.keys(categoryColors) as TaskCategory[]).map(cat => (
-                    <div key={cat} className="flex items-center space-x-2">
-                      <Checkbox id={cat} checked={advancedCategories[cat]} onCheckedChange={() => toggleAdvancedCategory(cat)} />
-                      <Label htmlFor={cat} className="capitalize">{cat}</Label>
+                    <div key={cat} className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox id={cat} checked={advancedCategories[cat]} onCheckedChange={() => toggleAdvancedCategory(cat)} />
+                        <Label htmlFor={cat} className="capitalize flex-1">{cat}</Label>
+                        <span className="text-sm font-medium w-12 text-right">{advancedModeWeights[cat]}%</span>
+                      </div>
+                      <Slider
+                        disabled={!advancedCategories[cat]}
+                        value={[advancedModeWeights[cat]]}
+                        onValueChange={(v) => handleWeightChange(cat, v)}
+                        max={100}
+                        step={1}
+                      />
                     </div>
                   ))}
                 </div>

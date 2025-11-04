@@ -24,16 +24,24 @@ async function hashPassword(password: string): Promise<string> {
   return Array.from(saltAndHash).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 /**
- * Verifies a password against a stored salt and hash.
+ * Verifies a password against a stored salt and hash using a constant-time comparison.
  */
 async function verifyPassword(password: string, storedSaltAndHashHex: string): Promise<boolean> {
   const saltAndHash = new Uint8Array(storedSaltAndHashHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
   const salt = saltAndHash.slice(0, SALT_LENGTH);
-  const hash = saltAndHash.slice(SALT_LENGTH);
+  const storedHash = saltAndHash.slice(SALT_LENGTH);
   const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), { name: 'PBKDF2' }, false, ['deriveBits']);
   const derivedBits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: HASH_ALGORITHM }, keyMaterial, 256);
   const derivedHash = new Uint8Array(derivedBits);
-  return crypto.subtle.timingSafeEqual(hash, derivedHash);
+  // Constant-time comparison to prevent timing attacks
+  if (storedHash.length !== derivedHash.length) {
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < storedHash.length; i++) {
+    diff |= storedHash[i] ^ derivedHash[i];
+  }
+  return diff === 0;
 }
 // Helper to get user ID from a request context
 function getUserId(c: any): string | null {
