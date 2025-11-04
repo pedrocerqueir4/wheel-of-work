@@ -86,11 +86,16 @@ export default {
   		borderRadius: {
   			'4xl': '2rem',
   			'5xl': '2.5rem',
+            '3xl': '1.5rem',
+            '2xl': '1rem',
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
   		},
   		colors: {
+            'brand-blue': 'rgb(96 165 250)',
+            'brand-yellow': 'rgb(251 191 36)',
+            'brand-pink': 'rgb(236 72 153)',
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			muted: {

@@ -3,22 +3,16 @@ export interface ApiResponse<T = unknown> {
   data?: T;
   error?: string;
 }
-
-// Minimal real-world chat example types (shared by frontend and worker)
+export type TaskCategory = 'work' | 'leisure' | 'creative';
+export interface Task {
+  id: string;
+  title: string;
+  category: TaskCategory;
+  completedPomodoros: number;
+}
+export type WheelMode = 'hard-working' | 'time-to-work' | 'normal' | 'advanced';
 export interface User {
   id: string;
   name: string;
-}
-
-export interface Chat {
-  id: string;
-  title: string;
-}
-
-export interface ChatMessage {
-  id: string;
-  chatId: string;
-  userId: string;
-  text: string;
-  ts: number; // epoch millis
+  tasks: Task[];
 }
