@@ -4,6 +4,8 @@ import { Separator } from "@/components/ui/separator";
 import { Utensils, Play, Pause, RotateCcw } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { AnimatePresence, motion } from "framer-motion";
+import { useEffect } from "react";
+import { triggerConfetti } from "@/lib/confetti";
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
@@ -19,6 +21,13 @@ export function PomodoroDisplay() {
   const resetPomodoro = useAppStore((s) => s.resetPomodoro);
   const pullLeisureTask = useAppStore((s) => s.pullLeisureTask);
   const isControlDisabled = pomodoroState === 'idle' && taskQueue.length === 0;
+  useEffect(() => {
+    if (pomodoroState === 'break') {
+      // This effect was moved to the store action `completeTask` to ensure it fires once per completion.
+      // If we want it tied to the component lifecycle, this is the place.
+      // The current implementation in the store is more reliable.
+    }
+  }, [pomodoroState]);
   return (
     <Card className="rounded-2xl shadow-soft">
       <CardHeader>

@@ -3,6 +3,7 @@ import { immer } from 'zustand/middleware/immer';
 import type { User, Task, TaskCategory, WheelMode } from '@shared/types';
 import { api } from '@/lib/api-client';
 import { toast } from 'sonner';
+import { triggerConfetti } from '@/lib/confetti';
 const POMODORO_DURATION = 25 * 60; // 25 minutes
 const SHORT_BREAK_DURATION = 5 * 60; // 5 minutes
 type PomodoroState = 'idle' | 'running' | 'paused' | 'break';
@@ -15,15 +16,18 @@ type AppState = {
   pomodoroState: PomodoroState;
   timer: number;
   currentTaskInSession: Task | null;
+  advancedModeCategories: Record<TaskCategory, boolean>;
 };
 type AppActions = {
-  login: () => Promise<void>;
+  login: (username: string) => Promise<void>;
+  register: (username: string) => Promise<void>;
   logout: () => void;
   addTask: (taskData: { title: string; category: TaskCategory }) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
   openAuthDialog: () => void;
   closeAuthDialog: () => void;
   setWheelMode: (mode: WheelMode) => void;
+  toggleAdvancedCategory: (category: TaskCategory) => void;
   spinWheel: () => Task | null;
   startPomodoro: () => void;
   pausePomodoro: () => void;
@@ -33,6 +37,10 @@ type AppActions = {
   _tick: () => void;
 };
 let timerInterval: NodeJS.Timeout | null = null;
+const getApiOptions = (user: User | null) => {
+    if (!user) return {};
+    return { headers: { 'X-User-Id': user.id } };
+};
 export const useAppStore = create<AppState & AppActions>()(
   immer((set, get) => ({
     user: null,
@@ -43,20 +51,43 @@ export const useAppStore = create<AppState & AppActions>()(
     pomodoroState: 'idle',
     timer: POMODORO_DURATION,
     currentTaskInSession: null,
-    login: async () => {
+    advancedModeCategories: {
+      work: true,
+      leisure: true,
+      creative: true,
+    },
+    login: async (username) => {
       set({ isLoading: true });
       try {
-        const user = await api<User>('/api/auth/login', { method: 'POST' });
+        const user = await api<User>('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ name: username }),
+        });
         set({ user, isLoading: false, isAuthDialogOpen: false });
-        toast.success(`Welcome, ${user.name}!`);
+        toast.success(`Welcome back, ${user.name}!`);
       } catch (error) {
         console.error("Login failed:", error);
-        toast.error("Login failed. Please try again.");
+        toast.error((error as Error).message || "Login failed. Please try again.");
+        set({ isLoading: false });
+      }
+    },
+    register: async (username) => {
+      set({ isLoading: true });
+      try {
+        const user = await api<User>('/api/auth/register', {
+          method: 'POST',
+          body: JSON.stringify({ name: username }),
+        });
+        set({ user, isLoading: false, isAuthDialogOpen: false });
+        toast.success(`Welcome, ${user.name}! Your account is created.`);
+      } catch (error) {
+        console.error("Registration failed:", error);
+        toast.error((error as Error).message || "Registration failed. Please try again.");
         set({ isLoading: false });
       }
     },
     logout: () => {
-      get().pausePomodoro(); // Ensure timer stops on logout
+      get().pausePomodoro();
       set({
         user: null,
         taskQueue: [],
@@ -67,15 +98,16 @@ export const useAppStore = create<AppState & AppActions>()(
       toast.info("You have been logged out.");
     },
     addTask: async (taskData) => {
+      const { user } = get();
+      if (!user) return;
       try {
         const newTask = await api<Task>('/api/tasks', {
           method: 'POST',
           body: JSON.stringify(taskData),
+          ...getApiOptions(user),
         });
         set((state) => {
-          if (state.user) {
-            state.user.tasks.push(newTask);
-          }
+          state.user?.tasks.push(newTask);
         });
         toast.success("Task added!");
       } catch (error) {
@@ -84,9 +116,12 @@ export const useAppStore = create<AppState & AppActions>()(
       }
     },
     deleteTask: async (taskId) => {
+      const { user } = get();
+      if (!user) return;
       try {
-        await api<{ id: string; deleted: boolean }>(`/api/tasks/${taskId}`, {
+        await api(`/api/tasks/${taskId}`, {
           method: 'DELETE',
+          ...getApiOptions(user),
         });
         set((state) => {
           if (state.user) {
@@ -102,8 +137,13 @@ export const useAppStore = create<AppState & AppActions>()(
     openAuthDialog: () => set({ isAuthDialogOpen: true }),
     closeAuthDialog: () => set({ isAuthDialogOpen: false }),
     setWheelMode: (mode) => set({ wheelMode: mode }),
+    toggleAdvancedCategory: (category) => {
+      set(state => {
+        state.advancedModeCategories[category] = !state.advancedModeCategories[category];
+      });
+    },
     spinWheel: () => {
-      const { user, wheelMode, taskQueue } = get();
+      const { user, wheelMode, taskQueue, advancedModeCategories } = get();
       if (!user) return null;
       let availableTasks: Task[] = [];
       switch (wheelMode) {
@@ -112,6 +152,16 @@ export const useAppStore = create<AppState & AppActions>()(
           break;
         case 'time-to-work':
           availableTasks = user.tasks.filter(t => t.category === 'work' || t.category === 'creative');
+          break;
+        case 'advanced':
+          const enabledCategories = Object.entries(advancedModeCategories)
+            .filter(([, isEnabled]) => isEnabled)
+            .map(([cat]) => cat as TaskCategory);
+          if (enabledCategories.length === 0) {
+            toast.error("No categories selected in Advanced mode.");
+            return null;
+          }
+          availableTasks = user.tasks.filter(t => enabledCategories.includes(t.category));
           break;
         case 'normal':
         default:
@@ -134,7 +184,7 @@ export const useAppStore = create<AppState & AppActions>()(
       return selectedTask;
     },
     startPomodoro: () => {
-      const { pomodoroState, taskQueue, currentTaskInSession } = get();
+      const { pomodoroState, taskQueue } = get();
       if (pomodoroState === 'running') return;
       if (pomodoroState === 'idle' && taskQueue.length === 0) {
         toast.warning("Add a task to the queue before starting.");
@@ -168,21 +218,18 @@ export const useAppStore = create<AppState & AppActions>()(
       timerInterval = null;
       const { currentTaskInSession } = get();
       if (!currentTaskInSession) return;
+      triggerConfetti();
       toast.success(`Completed: ${currentTaskInSession.title}! Time for a break.`);
       set(state => {
-        // Update pomodoro count on the original task list
         const taskInUserList = state.user?.tasks.find(t => t.id === currentTaskInSession.id);
         if (taskInUserList) {
           taskInUserList.completedPomodoros += 1;
         }
-        // Remove from queue
         state.taskQueue.shift();
-        // Start break
         state.pomodoroState = 'break';
         state.timer = SHORT_BREAK_DURATION;
         state.currentTaskInSession = null;
       });
-      // After break, go idle or start next task
       setTimeout(() => {
         set(state => {
           state.pomodoroState = 'idle';
@@ -200,7 +247,7 @@ export const useAppStore = create<AppState & AppActions>()(
       const queuedTaskIds = new Set(taskQueue.map(t => t.id));
       const availableLeisureTasks = leisureTasks.filter(t => !queuedTaskIds.has(t.id));
       if (availableLeisureTasks.length > 0) {
-        const taskToPull = availableLeisureTasks[0];
+        const taskToPull = availableLeisureTasks[Math.floor(Math.random() * availableLeisureTasks.length)];
         set(state => {
           state.taskQueue.unshift(taskToPull);
         });
@@ -210,12 +257,13 @@ export const useAppStore = create<AppState & AppActions>()(
       }
     },
     _tick: () => {
-      const { timer, completeTask } = get();
-      if (timer > 0) {
-        set(state => { state.timer -= 1; });
-      } else {
-        completeTask();
-      }
+      set(state => {
+        if (state.timer > 0) {
+          state.timer -= 1;
+        } else {
+          get().completeTask();
+        }
+      });
     },
   }))
 );
