@@ -80,7 +80,8 @@ function runSetupCommands() {
     const commands = [
     "bun add canvas-confetti@^1.9.0",
     "bun add @types/canvas-confetti@^1.6.0",
-    "bun add -D eslint-plugin-react"
+    "bun add -D eslint-plugin-react",
+    "bun add eslint-plugin-react"
 ];
     
     if (commands.length === 0) {
